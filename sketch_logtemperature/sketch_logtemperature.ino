@@ -1,3 +1,11 @@
+
+#include <ESP8266WiFiMulti.h>
+#include <WiFiClient.h>
+#include <WiFiClientSecure.h>
+#include <WiFiServer.h>
+#include <WiFiUdp.h>
+// Include the libraries needed for DS18B20 temperature measurement from https://github.com/milesburton/Arduino-Temperature-Control-Library
+#include <DallasTemperature.h> 
 /*
   LogTemperature
 
@@ -9,7 +17,19 @@
 // Note: These include files are located in: C:\Users\<USER>\AppData\Local\Arduino15\packages\esp8266\hardware\esp8266\2.0.0\libraries\ESP8266WiFi\src
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
+#include <OneWire.h> // Used for talking to DS18B20 temp sensor. Be careful to use the esp8266 version, usually there will be 2 versions installed in the IDE
 
+
+// Data wire for DS18B20 is plugged into port 2 on the NodeMCU pin D4
+#define ONE_WIRE_BUS 2
+// Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
+OneWire oneWire(ONE_WIRE_BUS);
+
+// Pass our oneWire reference to Dallas Temperature. 
+DallasTemperature sensors(&oneWire);
+
+// arrays to hold device address
+DeviceAddress insideThermometer;
 
 // Various configurations, including authentication details...
 #include "config.h"
@@ -308,14 +328,11 @@ int analogReadDummy(int pin) {
  */
 void processAllSensors() {
   static float lastTemperatureInside = -999;
-
+  static long TimeSinceLast = 0;
   // TODO: Handle multiple sensors...
-
-  // TODO: Do something like this to read the temperature sensor
-  //int readingInside = analogRead(PIN_TEMPERATURE_INSIDE);  
-  int readingInside = analogReadDummy(PIN_TEMPERATURE_INSIDE);
-
-  float temperatureInside = sensorReadingToTemperature(readingInside);
+  sensors.requestTemperatures(); // Send the command to get temperatures
+  TimeSinceLast = TimeSinceLast + POLLING_INTERVAL;
+  float temperatureInside = sensors.getTempCByIndex(0);
 
   if (LOG_DEBUG) {
     // Note: Serial.printf does not support floating point formats (%f)
@@ -327,8 +344,8 @@ void processAllSensors() {
   }
 
   float temperatureDiff = abs(temperatureInside - lastTemperatureInside);
-  if (temperatureDiff > TEMPERATURE_TRIGGER) {
-    
+  if ((temperatureDiff > TEMPERATURE_TRIGGER)| (TimeSinceLast > MAXIMUM_REPORTING_INTERVAL)) {
+    TimeSinceLast = 0;
     // Log the sample to the server...
     int retryCount = 0;
     boolean ok = sendTemperatureValue(temperatureInside);
@@ -349,30 +366,46 @@ void processAllSensors() {
   
 }
 
-
 //============================ Standard setup and loop functions =================================================
 
 // the setup function runs once when you press reset or power the board
 void setup() {
 
-  //Serial.begin(9600);
-  Serial.begin(74880);
+  Serial.begin(115200);
 
   Serial.println("\nInitialising...");
 
   // Initialise the LED utils
   //setupLed();
   //Led.setup();
+  // locate DS18B20 devices on the bus. Internal pullup resistor works but is much larger than than the external 4.7K specified. Risky!
+  sensors.begin();
+  int SensorCount = sensors.getDeviceCount(); 
+  sensors.setResolution(insideThermometer,12);
+ if (LOG_INFO) {
+  Serial.print("Found ");
+  Serial.print(SensorCount);
+  Serial.println(" temperature sensors.");
   
-
+  sensors.requestTemperatures(); // Send the command to get temperatures
+  for (int i =0; i<SensorCount; i++)
+    {
+    float temp = sensors.getTempCByIndex(i);
+    Serial.print("Temperature ");
+    Serial.print(i);
+    Serial.print(" ");
+    Serial.println(temp);
+    }
+  }
+   
   WiFi.mode(WIFI_STA);
 
   if (LOG_DEBUG) {
     Serial.printf("WiFi.status = %d\n",  WiFi.status());
     // Output some WIFI diagnostics...
     Serial.println("Diags...");
-    WiFi.printDiag(Serial);
-  }
+    WiFi.printDiag(Serial );
+    }
 
   // Not really necessary, but let's connect to the wi-fi now...
   // This at least ensures that the board will "error-blink" on startup if the wi-fi is not connected
@@ -389,7 +422,7 @@ void setup() {
 void loop() {
 
   // Blink the LED really quickly to signify that the program is running...
-  Led.blinkHeartbeat();
+  //Led.blinkHeartbeat();
   
   // Read all sensors and process the data
   processAllSensors();
