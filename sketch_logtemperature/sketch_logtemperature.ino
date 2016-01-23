@@ -19,9 +19,9 @@
 #include <WiFiClient.h>
 #include <OneWire.h> // Used for talking to DS18B20 temp sensor. Be careful to use the esp8266 version, usually there will be 2 versions installed in the IDE
 
+// Various configurations, including authentication details...
+#include "config.h"
 
-// Data wire for DS18B20 is plugged into port 2 on the NodeMCU pin D4
-#define ONE_WIRE_BUS 2
 // Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
 OneWire oneWire(ONE_WIRE_BUS);
 
@@ -30,9 +30,6 @@ DallasTemperature sensors(&oneWire);
 
 // arrays to hold device address
 DeviceAddress insideThermometer;
-
-// Various configurations, including authentication details...
-#include "config.h"
 
 
 // Some utilities for operating the onboard LED
@@ -284,25 +281,6 @@ boolean connectToWiFi(int maxRetries = -1) {
   return isConnected;
 }
 
-// Converts a sensor reading to a temperature in degrees celcius
-float sensorReadingToTemperature(int sensorReading) {
-   
-  // convert the reading to a voltage, (for 5v arduino use 5.0, for 3.3v arduino use 3.3)
-  float voltage = sensorReading * 3.3 / 1024.0;
- 
-  // Convert the voltage to a temperature
-  float temperatureC = (voltage - 0.5) * 100 ;  // assumung 10mV per degree with 500 mV offset
-
-  if (LOG_DEBUG) {
-    Serial.printf("sensorReading = %d\n", sensorReading);
-    Serial.print("voltage = ");
-    Serial.println(voltage);
-    Serial.print("temperature = ");
-    Serial.println(temperatureC);
-  }
-
-  return temperatureC;
-}
 
 // Emulates a temperature sensor - for testing the code without a physical sensor connected 
 int analogReadDummy(int pin) {
@@ -330,10 +308,9 @@ void processAllSensors() {
   static float lastTemperatureInside = -999;
   static long TimeSinceLast = 0;
   // TODO: Handle multiple sensors...
-  sensors.requestTemperatures(); // Send the command to get temperatures
   TimeSinceLast = TimeSinceLast + POLLING_INTERVAL;
-  float temperatureInside = sensors.getTempCByIndex(0);
-
+  float temperatureInside = sensors.getTempCByIndex(0); 
+  sensors.requestTemperatures();   // Send the command to get temperatures. POLLING_INTERVAL should be at least 1 second to allow this to complete before we get here again.
   if (LOG_DEBUG) {
     // Note: Serial.printf does not support floating point formats (%f)
     //Serial.printf("Temp inside = %3.2f  Last=%3.2f\n", temperatureInside, lastTemperatureInside);
@@ -381,13 +358,11 @@ void setup() {
   // locate DS18B20 devices on the bus. Internal pullup resistor works but is much larger than than the external 4.7K specified. Risky!
   sensors.begin();
   int SensorCount = sensors.getDeviceCount(); 
-  sensors.setResolution(insideThermometer,12);
+  sensors.requestTemperatures(); // Send the command to get temperatures leave as 12 bit by default
  if (LOG_INFO) {
   Serial.print("Found ");
   Serial.print(SensorCount);
   Serial.println(" temperature sensors.");
-  
-  sensors.requestTemperatures(); // Send the command to get temperatures
   for (int i =0; i<SensorCount; i++)
     {
     float temp = sensors.getTempCByIndex(i);
@@ -397,7 +372,11 @@ void setup() {
     Serial.println(temp);
     }
   }
-   
+  sensors.setWaitForConversion(FALSE); //This must be used with caution. See comments on this command in Dallas Temperature.cpp
+  /*  sensors.requestTemperatures() will become a non blocking call but it will take
+   *  about 750ms for the temp sensor to complete the reading. sensors.getTempCByIndex should not be called until the sensor
+   *  has completed taking the reading i.e wait at least 1 second.
+   */
   WiFi.mode(WIFI_STA);
 
   if (LOG_DEBUG) {
