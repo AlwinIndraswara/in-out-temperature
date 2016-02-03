@@ -29,7 +29,7 @@ OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 
 // arrays to hold device address
-DeviceAddress insideThermometer;
+DeviceAddress Thermometer;
 
 
 // Some utilities for operating the onboard LED
@@ -305,42 +305,42 @@ int analogReadDummy(int pin) {
  * This is the main function that reads all sensors, examines the data and logs info to the server if required
  */
 void processAllSensors() {
-  static float lastTemperatureInside = -999;
+  static float lastTemperatureSample = -999;
   static long TimeSinceLast = 0;
   // TODO: Handle multiple sensors...
   TimeSinceLast = TimeSinceLast + POLLING_INTERVAL;
-  float temperatureInside = sensors.getTempCByIndex(0); 
+  float TemperatureSample = sensors.getTempCByIndex(0); 
   sensors.requestTemperatures();   // Send the command to get temperatures. POLLING_INTERVAL should be at least 1 second to allow this to complete before we get here again.
   if (LOG_DEBUG) {
     // Note: Serial.printf does not support floating point formats (%f)
-    //Serial.printf("Temp inside = %3.2f  Last=%3.2f\n", temperatureInside, lastTemperatureInside);
-    Serial.print("Temp inside = ");
-    Serial.print(temperatureInside);
+    //Serial.printf("Temp Sample = %3.2f  Last=%3.2f\n", TemperatureSample, lastTemperatureSample);
+    Serial.print("Temp sample = ");
+    Serial.print(TemperatureSample);
     Serial.print("  Last = ");
-    Serial.println(lastTemperatureInside);
+    Serial.println(lastTemperatureSample);
   }
-
-  float temperatureDiff = abs(temperatureInside - lastTemperatureInside);
-  if ((temperatureDiff > TEMPERATURE_TRIGGER)| (TimeSinceLast > MAXIMUM_REPORTING_INTERVAL)) {
+  float temperatureDiff = abs(TemperatureSample - lastTemperatureSample);
+  if (((temperatureDiff > TEMPERATURE_TRIGGER)| (TimeSinceLast > MAXIMUM_REPORTING_INTERVAL))& (TemperatureSample!=-127)) //If no sensor present temperature = -127
+  {
     TimeSinceLast = 0;
     // Log the sample to the server...
     int retryCount = 0;
-    boolean ok = sendTemperatureValue(temperatureInside);
+    boolean ok = sendTemperatureValue(TemperatureSample);
     while (!ok && retryCount++ <= MAX_RETRIES_SAMPLE) {
       Serial.println("Request failed. Retrying...");
-      ok = sendTemperatureValue(temperatureInside);
+      ok = sendTemperatureValue(TemperatureSample);
     }
 
     if (ok) {
       // The data has been saved on the server
-      lastTemperatureInside = temperatureInside;
+      lastTemperatureSample = TemperatureSample;
       
     } else {
       // Abandon this sample as we cannot connect to the server!
       if (LOG_ERROR) Serial.printf("Failed to upload sample after %d attempts\n", retryCount); 
-    }
+    } 
   }
-  
+    else if (LOG_ERROR) Serial.println("No temperature sensor detected");  
 }
 
 //============================ Standard setup and loop functions =================================================
