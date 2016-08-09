@@ -8,7 +8,7 @@
 #include <DallasTemperature.h> 
 /*
   LogTemperature
-
+andalasa
   Logs changes to temperature to a ubidots server.
   For use with an ESP8266 board (ESP-12E)
 
